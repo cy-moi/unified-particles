@@ -138,9 +138,42 @@ void scene_structure::display_gui() {
 void scene_structure::mouse_move_event() {
   if (!inputs.keyboard.shift)
     camera_control.action_mouse_move(environment.camera_view);
+  
+  // move the cloth by pressing shift
+	if (inputs.keyboard.shift)
+	{
+		// Current position of the mouse
+		vec2 const& p = inputs.mouse.position.current;
+
+		// Apply Deformation: press on shift key + left click on the mouse when a vertex is already selected
+		if (inputs.mouse.click.left) {
+      if(control_particle->pid == -1) {
+        for(auto &obj : dobj_list) {
+          if (obj->type == obj_type::CLOTH) {
+            control_particle = obj->particles[obj->particles.size()/2];
+            control_particle->is_fixed = true;
+          }
+        }
+      } else {
+        // Current translation in 2D window coordinates
+        // vec2 const translation_screen = p - picking.screen_clicked;
+        control_particle->x.y -= epsilon;
+      }
+
+		}
+
+	}
+  // else
+	// 	picking.active = false; // Unselect picking when shift is released
 }
 void scene_structure::mouse_click_event() {
   camera_control.action_mouse_click(environment.camera_view);
+  if (inputs.mouse.click.last_action == last_mouse_cursor_action::release_left && control_particle->pid != -1)
+	{
+		control_particle->is_fixed = false;
+    control_particle = std::make_shared<particle_bubble>();
+
+	}
 }
 void scene_structure::keyboard_event() {
   camera_control.action_keyboard(environment.camera_view);

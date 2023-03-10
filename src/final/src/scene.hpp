@@ -42,6 +42,10 @@ struct scene_structure : cgp::scene_inputs_generic {
 
   dobj dground;
   std::shared_ptr<dobj> dcube;
+  enum obj_type : int { RIGID = 0, CLOTH, Granular };
+
+  std::shared_ptr<particle_bubble> control_particle = std::make_shared<particle_bubble>();
+
   // Least-square data
   // linear_system_structure linear_system;
 
