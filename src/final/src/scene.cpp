@@ -44,15 +44,15 @@ void scene_structure::display_frame() {
 
   if (gui.display_wireframe) {
     draw_wireframe(vi_ground, environment);
-    // for (auto &obj : dobj_list) {
-    //   draw_wireframe(obj->visual, environment);
-    // }
+    for (auto &obj : dobj_list) {
+      draw_wireframe(obj->visual, environment);
+    }
   }
 
   if (gui.display_shape) {
-    // for (auto &obj : dobj_list) {
-    //   draw(obj->visual, environment);
-    // }
+    for (auto &obj : dobj_list) {
+      draw(obj->visual, environment);
+    }
     draw(vi_ground, environment);
   }
 
