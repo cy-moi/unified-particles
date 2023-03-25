@@ -58,7 +58,10 @@ void scene_structure::display_frame() {
 
   if (gui.display_internal_particles) {
     for (auto &obj : dobj_list) {
-      vi_sphere.material.color = {0, 0, 0};
+      // vi_sphere.material.color = {0, 0, 0};
+      if(obj->type == obj_type::RIGID) vi_sphere.material.color = { 255, 0 , 0};
+      if(obj->type == obj_type::CLOTH) vi_sphere.material.color = { 0, 255 , 0};
+      if(obj->type == obj_type::Granular) vi_sphere.material.color = { 0, 0 , 0};
       float color_step = 1.0 / obj->particles.size();
       for (auto &particle : obj->particles) {
         vi_sphere.material.color += {color_step, color_step, color_step};
