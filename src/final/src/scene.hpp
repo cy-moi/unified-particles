@@ -7,12 +7,12 @@
 // The element of the GUI that are not already stored in other structures
 struct gui_parameters {
   bool display_frame = false;
-  bool display_wireframe = true;
+  bool display_wireframe = false;
   bool display_shape = false;
   bool display_internal_particles = true;
-  bool start_sim = false;
+  bool start_sim = true;
   bool display_SDF = false;
-  bool step_run = true;
+  bool step_run = false;
   float time_step = 0.01;
 };
 

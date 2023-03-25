@@ -282,6 +282,7 @@ std::shared_ptr<dobj> create_sphere(cgp::vec3 center, float radius) {
   return obj;
 }
 
+
 std::shared_ptr<dobj> create_sphere2(cgp::vec3 center, float radius) {
   auto mesh = mesh_primitive_sphere(radius, center);
   auto obj = std::make_shared<dobj>(mesh);
@@ -389,6 +390,9 @@ create_cloth(cgp::vec3 center, float height, float width,
   for (int i = 0; i < Nu; i++) {
     for (int j = 0; j < Nv; j++) {
       auto &p1 = obj->particles[i * Nv + j];
+      
+      // This lambda function generates a distance constraint between two particles
+      // with indices i and j in the obj's particles list, and adds it to the global constraints list.
       auto gen_constrain = [&p1, &obj, Nv, Nu](int i, int j) {
         if (i < 0 || j < 0 || i >= Nu || j >= Nv)
           return;
@@ -477,34 +481,42 @@ std::shared_ptr<dobj> create_cube_stack(cgp::vec3 center, float edge_length) {
 std::vector<std::shared_ptr<Constraint>> g_constraints;
 std::vector<std::shared_ptr<Constraint>> g_collision_constraints;
 
+// This function generates collision constraints for all particles in the simulation.
+// It first clears the global collision constraints list, then iterates through all particles,
+// checking for collisions with the ground plane and other particles.
+// If a collision is detected, the appropriate constraint is created and added to the global collision constraints list.
 void generate_collision_constraints() {
   g_collision_constraints.clear();
   for (size_t i = 0; i < all_particles.size(); i++) {
     auto &pi = all_particles[i];
-    // todo a better way to get collision
+    // Check for collision with the ground plane
     float d = pi->xg.z;
     if (d < particle_dim / 2.0 + epsilon) {
       g_collision_constraints.push_back(buildStaticCollisionConstraint(
           pi, {0, 0, 1}, {pi->xg.x, pi->xg.y, particle_dim / 2.0 + epsilon}));
     }
-    //
+    // Check for collisions between particles
     for (size_t j = i + 1; j < all_particles.size(); j++) {
       auto &pj = all_particles[j];
+      // Skip particles in the same rigid object
       if (pi->pid == pj->pid && dobj_list[pi->pid]->type == obj_type::RIGID &&
           dobj_list[pj->pid]->type == obj_type::RIGID) {
-        continue; // skip particle in same  rigid obj
+        continue;
       }
-
+  
       float dist = norm(pi->xg - pj->xg);
+      // If the distance between particles is less than the particle diameter, create a rigid collision constraint
       if (dist < particle_dim - epsilon) {
-        // ridig collision
         g_collision_constraints.push_back(buildRigidCollisionConstraint(i, j));
       }
     }
   }
 }
 
-// DistanceConstraint
+// This function builds a DistanceConstraint object for two given particles A and B with a specified distance.
+// It initializes the constraint object, sets its cardinality to 2 (since it involves two particles),
+// adds the particles A and B to the constraint's particles list, and sets the constraint's distance.
+// Returns a shared_ptr to the created DistanceConstraint object.
 std::shared_ptr<Constraint>
 buildDistanceConstraint(std::shared_ptr<particle_bubble> &A,
                         std::shared_ptr<particle_bubble> &B, float distance) {
@@ -516,6 +528,9 @@ buildDistanceConstraint(std::shared_ptr<particle_bubble> &A,
   return constraint;
 }
 
+// This function projects the DistanceConstraint for two particles.
+// It calculates the displacement needed to maintain the specified distance between the particles
+// and applies it to their positions, considering their inverse masses and whether they are fixed or not.
 void DistanceConstraint::project() {
   auto &p1 = particles[0];
   auto &p2 = particles[1];
@@ -527,24 +542,32 @@ void DistanceConstraint::project() {
   //   return;
   // }
 
+  // Calculate the displacement needed to maintain the specified distance between the particles
   cgp::vec3 delta =
       (d - distance) / (p1->invmass + p2->invmass) * (p12 / d) * 1.0;
 
+  // If particle 1 is fixed, set its position to the fixed position
   if (p1->is_fixed) {
-    // if this particle is a fixed one, we don't change it position anyway.
     p1->xg = p1->fix_x;
   } else {
+    // Otherwise, apply the displacement to particle 1's position
     p1->xg += -delta * p1->invmass;
   }
 
+  // If particle 2 is fixed, set its position to the fixed position
   if (p2->is_fixed) {
     p2->xg = p2->fix_x;
   } else {
+    // Otherwise, apply the displacement to particle 2's position
     p2->xg += delta * p2->invmass;
   }
 }
 
-// StaticCollisionConstraint
+
+// This function builds a StaticCollisionConstraint object for a given particle, normal, and position.
+// It initializes the constraint object, sets its cardinality to 1 (since it involves one particle),
+// adds the particle to the constraint's particles list, and sets the constraint's normal and position.
+// Returns a shared_ptr to the created StaticCollisionConstraint object.
 std::shared_ptr<Constraint>
 buildStaticCollisionConstraint(std::shared_ptr<particle_bubble> &p, vec3 normal,
                                vec3 position) {
@@ -555,28 +578,42 @@ buildStaticCollisionConstraint(std::shared_ptr<particle_bubble> &p, vec3 normal,
   constraint->position = position;
   return constraint;
 }
+
+// This function projects the StaticCollisionConstraint for a particle.
+// It checks if the particle is colliding with a static object, and if so,
+// it adjusts the particle's position to resolve the collision.
+// Additionally, it applies friction to the particle if enabled.
 void StaticCollisionConstraint::project() {
   auto &p = particles[0];
   vec3 pointToPosition = (p->xg - position);
 
+  // Check if the particle is not colliding with the static object
   if (dot(pointToPosition, normal) >= 0.0f && norm(pointToPosition) >= 0.0f)
     return;
 
+  // Calculate the displacement needed to resolve the collision
   float a = dot(pointToPosition, normal);
   vec3 b = pointToPosition / (norm(pointToPosition));
   vec3 displacement = a * b;
+
+  // If the displacement is too small, do not apply it
   if (norm(displacement) < epsilon)
     return;
+
+  // Apply the displacement to the particle's position
   p->xg += displacement;
 
-  // friction
+  // Apply friction if enabled
   if (enable_friction) {
     vec3 dp = p->xg - p->x;
     vec3 dpt = dp - dot(dp, normal) * normal;
     float ldpt = norm(dpt);
+
+    // If the tangential displacement is too small, do not apply friction
     if (ldpt < epsilon)
       return;
 
+    // Apply static or kinetic friction based on the tangential displacement
     if (ldpt < sfric * (particle_dim / 2.0)) {
       p->xg -= dpt;
     } else {
@@ -586,6 +623,11 @@ void StaticCollisionConstraint::project() {
 }
 
 // RigidShapeMatchingConstraint
+// This function builds a RigidShapeMatchingConstraint object for a given dobj (dynamic object).
+// It initializes the constraint object, sets the constraint's obj to the given obj_,
+// sets its cardinality to the number of particles in the obj, and assigns the obj's particles
+// to the constraint's particles list.
+// Returns a shared_ptr to the created RigidShapeMatchingConstraint object.
 std::shared_ptr<Constraint> buildRigidShapeMatchingConstraint(dobj *obj_) {
   auto constraint = std::make_shared<RigidShapeMatchingConstraint>();
   constraint->obj = obj_;
@@ -594,19 +636,31 @@ std::shared_ptr<Constraint> buildRigidShapeMatchingConstraint(dobj *obj_) {
   return constraint;
 }
 
+// This function projects the RigidShapeMatchingConstraint for a dynamic object (dobj).
+// It updates the object's rotation matrix, and for each particle in the object,
+// it calculates the displacement needed to match the object's original shape.
+// The displacement is then applied to the particle's position.
 void RigidShapeMatchingConstraint::project() {
-  // paper page 5 section 5
-  //∆xi = (Qri + c) − x∗  Eq.(15)
+  // Update the object's rotation matrix (based on the paper, page 5, section 5)
+  // ∆xi = (Qri + c) − x∗  Eq.(15)
   // get Q
-
   obj->update_rotation();
+
+  // Iterate through the particles in the object
   for (auto &p : particles) {
+    // Calculate the displacement needed to match the object's original shape (Eq. 15 in the paper)
     auto detal_x = (obj->rotation_matrix * p->r + obj->center) - p->xg;
-    p->xg += detal_x * 1.0; // in rigid stiffness shoule be 1
+
+    // Apply the displacement to the particle's position (rigid stiffness should be 1)
+    p->xg += detal_x * 1.0;
   }
 }
 
 // RigidCollisionConstraint
+// This function builds a RigidCollisionConstraint object for two given particle indices p1 and p2.
+// It initializes the constraint object, sets its cardinality to 2 (since it involves two particles),
+// and assigns the particle indices p1 and p2 to the constraint's p1 and p2 members.
+// Returns a shared_ptr to the created RigidCollisionConstraint object.
 std::shared_ptr<Constraint> buildRigidCollisionConstraint(int p1, int p2) {
   auto constraint = std::make_shared<RigidCollisionConstraint>();
   constraint->cardinality = 2;
@@ -615,14 +669,19 @@ std::shared_ptr<Constraint> buildRigidCollisionConstraint(int p1, int p2) {
   return constraint;
 }
 
+// This function projects the RigidCollisionConstraint for two particles.
+// It handles both normal collisions and interlocking cases (tunneling) as described in the paper (section 5.1).
+// The function calculates the displacement needed to resolve the collision and applies it to the particles' positions.
+// Additionally, it applies friction to the particles if enabled.
 void RigidCollisionConstraint::project() {
   auto &mp1 = all_particles[p1];
   auto &mp2 = all_particles[p2];
   auto &sdf_1 = sdf_list[p1];
   auto &sdf_2 = sdf_list[p2];
 
+  // Check if the distance between the two particles is greater than the sum of their radii plus epsilon
   if (norm(mp1->xg - mp2->xg) > particle_dim / 2.0 + epsilon) {
-    // just handle it as normal collision
+    // Handle normal collision
     cgp::vec3 p12 = mp2->xg - mp1->xg;
     float len = cgp::norm(p12);
     d = particle_dim - len;
@@ -630,9 +689,9 @@ void RigidCollisionConstraint::project() {
       return;
     n = p12 / len;
   } else {
-    // interlock occur, tunneling case mentioned in paper 5.1
-    // for inner particles
+    // Handle interlocking (tunneling) case as described in paper section 5.1
 
+    // For inner particles
     if (sdf_1->distance < sdf_2->distance) {
       d = sdf_1->distance;
       n = dobj_list[mp1->pid]->rotation_matrix * sdf_1->gradiant;
@@ -640,8 +699,9 @@ void RigidCollisionConstraint::project() {
       d = sdf_2->distance;
       n = -(dobj_list[mp2->pid]->rotation_matrix * sdf_2->gradiant);
     }
-    // for surface particles
-    // magnitude < r
+
+    // For surface particles
+    // If the magnitude is less than the particle radius
     if (d < particle_dim / 2.0 + epsilon) {
       auto p12 = mp1->xg - mp2->xg;
       auto len_p12 = norm(p12);
@@ -655,33 +715,40 @@ void RigidCollisionConstraint::project() {
       } else {
         n = p12;
       }
-      // debug log start
-      // std::cout << "surface interlock occured" << std::endl;
-      // debug log end
+      // Debug log: surface interlock occurred
+      // std::cout << "surface interlock occurred" << std::endl;
     } else {
-      // debug log start
-      // std::cout << "internal interlock occured" << std::endl;
-      // debug log end
+      // Debug log: internal interlock occurred
+      // std::cout << "internal interlock occurred" << std::endl;
     }
   }
 
+  // Calculate the displacement needed to resolve the collision for both particles
   vec3 delta_1 = -mp1->tinvmass / (mp1->tinvmass + mp2->tinvmass) * d * n;
   vec3 delta_2 = mp2->tinvmass / (mp1->tinvmass + mp2->tinvmass) * d * n;
 
+  // Apply half of the calculated displacements to each particle's position
   mp1->xg += delta_1 / 2.0;
   mp2->xg += delta_2 / 2.0;
 
-  // friction
+  // Apply friction if enabled
   if (enable_friction) {
+    // Calculate the normalized normal vector
     vec3 nf = normalize(n);
+    
+    // Calculate the tangential displacement between the particles
     vec3 delta_pp_x_xg = (mp1->xg - mp1->x) - (mp2->xg - mp2->x);
     vec3 delta_t = delta_pp_x_xg - dot(delta_pp_x_xg, nf) * nf;
     float ldpt = norm(delta_t);
+
+    // If the tangential displacement is too small, do not apply friction
     if (ldpt < epsilon)
       return;
 
+    // Calculate the sum of the inverse masses of the particles
     auto wsum = mp1->tinvmass + mp2->tinvmass;
 
+    // Apply static or kinetic friction based on the tangential displacement
     if (ldpt < sfric * d) {
       mp1->xg -= delta_t * mp1->tinvmass / wsum;
       mp2->xg += delta_t * mp2->tinvmass / wsum;
