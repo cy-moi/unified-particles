@@ -12,4 +12,4 @@ Use Command line:
 `./src/final/build/final`
 
 
-### Interacte with the cloth in `all` scene by holding `ctrl` and drag with mouse left press. Since this is only an extra debug feature rather than an official one, it is not included in the report and may cause problems.
+### Interacte with the cloth in `all` scene by holding `shift` and drag with mouse left press. Since this is only an extra debug feature rather than an official one, it is not included in the report and may cause problems.
